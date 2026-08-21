@@ -31,10 +31,13 @@ class AgentState(TypedDict, total=False):
     query: str
     ctx: ToolContext            # runtime handle (session + principal + ids)
     confirm_action: dict | None  # a pre-approved action to commit this turn
+    history: list[dict]         # recent prior turns in this conversation, oldest first
 
     # --- derived ---------------------------------------------------------
     intent: dict
     entities: dict
+    context_account_id: int | None  # account inferred from ticket/order/account entities or the caller
+    clarification: str | None       # a question to ask instead of guessing (set → short-circuits planning)
     plan: list[PlannedCall]
     tool_calls: list[dict]      # timeline of executed tools
     results: dict               # tool_name -> ToolResult (live objects, in-process)
@@ -50,13 +53,21 @@ class AgentState(TypedDict, total=False):
     error: str | None
 
 
-def new_state(query: str, ctx: ToolContext, confirm_action: dict | None = None) -> AgentState:
+def new_state(
+    query: str,
+    ctx: ToolContext,
+    confirm_action: dict | None = None,
+    history: list[dict] | None = None,
+) -> AgentState:
     return AgentState(
         query=query,
         ctx=ctx,
         confirm_action=confirm_action,
+        history=history or [],
         intent={},
         entities={},
+        context_account_id=None,
+        clarification=None,
         plan=[],
         tool_calls=[],
         results={},

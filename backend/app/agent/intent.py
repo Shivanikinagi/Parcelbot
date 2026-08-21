@@ -74,17 +74,63 @@ def extract_entities(query: str) -> dict:
     }
 
 
+def carry_forward_entities(current: dict, history: list[dict]) -> tuple[dict, bool]:
+    """Fill in any empty entity slot from the most recent prior turn that had one.
+
+    Powers natural follow-ups like "why did you choose that SLA?" — with no
+    ticket code restated, the current turn's own extraction is empty, but the
+    ticket discussed one turn ago should still be in play. Returns the
+    (possibly-filled) entities and whether anything was actually carried over,
+    so the caller can note it in the reasoning trace.
+    """
+    filled = {k: list(v) for k, v in current.items()}
+    carried = False
+    for msg in reversed(history):
+        content = msg.get("content", "")
+        if not content:
+            continue
+        prior = extract_entities(content)
+        for key in ("tickets", "orders", "accounts"):
+            if not filled[key] and prior[key]:
+                filled[key] = prior[key]
+                carried = True
+        if all(filled[key] for key in ("tickets", "orders", "accounts")):
+            break
+    return filled, carried
+
+
 _INTENT_SIGNALS: list[tuple[str, str]] = [
+    ("action_cancel_request", r"^\s*(actually[, ]+)?(don'?t|do not|no,? )\s*(do (that|it)|proceed|escalate)\b|"
+                               r"\b(never\s?mind|belay that|cancel that|abort that|scratch that)\b"),
     ("action_escalate", r"\bescalat"),
     ("action_task", r"\b(follow[- ]?up task|create (a )?task|remind me|add a todo|action item)\b"),
     ("action_update", r"\b(update|set|change|assign|close|resolve|mark)\b.*\b(ticket|status|severity|priority)\b|\bmark .* (resolved|closed)\b"),
     ("cancellation", r"\bcancel"),
     ("service_credit", r"\b(service credit|credit|refund|compensat|failed pickup|missed pickup)\b"),
+    ("analytics", r"\b(analy[sz]e|analytics|cluster|trend|recurring|unusual pattern|urgent issues?|"
+                  r"multiple customers|which accounts|same (known )?issue|approaching.*sla|"
+                  r"exceeding.*sla|summary of support|most (frequent|urgent)|highest number of|"
+                  r"top (issue|customer)|carrier failures?)\b"),
     ("sla", r"\b(sla|response time|first response|breach|target|how long|deadline)\b"),
     ("triage", r"\b(severity|triage|priorit|classify|what.*priority|how bad)\b"),
     ("history", r"\b(history|past ticket|previous ticket|earlier|prior)\b"),
+    ("help", r"^\s*(what can you( help| do)|can you help|how can you help|help me\b(?!.{0,10}\b(order|pickup|ticket|shipment))|"
+             r"what (do you|can this) do)\b"),
     ("greeting", r"^\s*(hi|hello|hey|thanks|thank you|good (morning|afternoon))\b"),
 ]
+
+_VAGUE_PROBLEM_RE = re.compile(
+    r"\b(problem|issue|trouble)\s+with\s+(my|the)\s+(pickup|order|shipment|delivery|package|parcel)\b",
+    re.IGNORECASE,
+)
+
+# Distinguishes "what IS the [general] SLA policy" (answerable generically) from
+# "is THIS ticket/account breaching SLA" (needs a specific target to compute).
+_SLA_COMPUTE_RE = re.compile(
+    r"\b(breach|overdue|exceed|remaining|elapsed|is it|has it|my (ticket|sla|account)|this ticket|"
+    r"still (within|on) target)\b",
+    re.IGNORECASE,
+)
 
 
 def classify_intent(query: str, entities: dict) -> dict:
@@ -103,6 +149,31 @@ def classify_intent(query: str, entities: dict) -> dict:
     }
 
 
+def detect_clarification(intent: dict, entities: dict, principal: Principal) -> str | None:
+    """Return a clarifying question when a request can't be safely acted on
+    as-is, instead of silently falling through to an unrelated document search.
+    """
+    itype = intent["type"]
+    query = intent["raw"]
+    ticket = entities["tickets"][0] if entities["tickets"] else None
+    order = entities["orders"][0] if entities["orders"] else None
+    has_account_context = bool(entities["accounts"]) or principal.account_id is not None
+
+    if itype == "action_escalate" and not ticket:
+        return "Which ticket would you like me to escalate? Please give me a ticket code (e.g. TKT-501)."
+    if itype == "action_update" and not ticket:
+        return "Which ticket would you like to update, and what should change (status, severity, or assignee)?"
+    if itype == "action_task" and len(query.split()) <= 4:
+        return "What should the follow-up task be about, and for which ticket or account (if any)?"
+    if itype == "sla" and not ticket and not has_account_context and _SLA_COMPUTE_RE.search(query):
+        return "Which ticket or account would you like the SLA target for?"
+    if itype == "cancellation" and not order and not has_account_context:
+        return "Which order would you like to check for cancellation — do you have the order code (e.g. ORD-1001)?"
+    if _VAGUE_PROBLEM_RE.search(query) and not order and not ticket:
+        return "Sorry to hear that — could you share the order code (e.g. ORD-1001) and what happened with the pickup?"
+    return None
+
+
 def _default_account_arg(principal: Principal, entities: dict) -> dict:
     """Prefer an explicit in-query account (internal), else the caller's own."""
     if entities["accounts"] and principal.role.is_internal:
@@ -110,7 +181,23 @@ def _default_account_arg(principal: Principal, entities: dict) -> dict:
     return {}
 
 
-def plan_tools(intent: dict, entities: dict, principal: Principal) -> list[PlannedCall]:
+def _analytics_focus(query: str) -> str:
+    q = query.lower()
+    if re.search(r"cluster|same.*issue|underlying issue", q):
+        return "clusters"
+    if re.search(r"approaching|exceeding|breach|sla risk|urgent", q):
+        return "sla_risk"
+    if re.search(r"multiple customers|which accounts|affected", q):
+        return "cross_customer"
+    return "insights"
+
+
+def plan_tools(
+    intent: dict,
+    entities: dict,
+    principal: Principal,
+    context_account_id: int | None = None,
+) -> list[PlannedCall]:
     itype = intent["type"]
     plan: list[PlannedCall] = []
     query = intent["raw"]
@@ -120,12 +207,22 @@ def plan_tools(intent: dict, entities: dict, principal: Principal) -> list[Plann
     def add(tool, args, phase, why):
         plan.append(PlannedCall(tool=tool, args=args, phase=phase, why=why))
 
-    if itype == "greeting":
-        return plan  # no tools; the narrator handles a friendly reply
+    if itype in {"greeting", "help", "action_cancel_request"}:
+        return plan  # no tools; the narrator handles a canned, deterministic reply
+
+    if itype == "analytics":
+        add(
+            "analytics_tool", {"focus": _analytics_focus(query)}, "structured",
+            "Pull live, data-backed proactive insights instead of citing static policy text.",
+        )
+        return plan
 
     # Almost everything benefits from grounding in the knowledge base.
     if itype not in {"action_task"}:
-        add("document_search", {"query": query}, "retrieve", "Ground the answer in policy/SOP/agreement evidence.")
+        add(
+            "document_search", {"query": query, "context_account_id": context_account_id}, "retrieve",
+            "Ground the answer in policy/SOP/agreement evidence.",
+        )
 
     # Known-issue matching where relevant.
     if itype in {"triage", "knowledge", "general"} or ticket:

@@ -24,12 +24,24 @@ Rules you MUST follow:
    and why (a signed customer agreement outranks the current policy, which
    outranks deprecated documents; historical tickets are context only and may be
    wrong).
+3b. A customer agreement's terms apply ONLY to that specific customer. If the
+    user's question is general/unscoped (no specific ticket, order, or account
+    named) and the retrieved evidence includes one customer's agreement
+    clause, DO NOT present that clause as the universal answer. Lead with the
+    general policy default instead, and mention the agreement override only as
+    a secondary note (e.g. "the default is X; note that [Customer]'s contract
+    sets Y instead"). Only lead with an agreement's terms when the question is
+    clearly about that specific account.
 4. If an ACTION IS PENDING, do not claim it is done. Clearly summarise what will
    happen, list the consequences, and ask the user to confirm.
 5. If confidence is low or a fact is unknown, say so plainly and recommend
    escalation rather than guessing.
 6. Be concise, professional, and helpful. Use short paragraphs and bullets.
    Respond in Markdown. Amounts are in INR.
+7. RECENT CONVERSATION (if provided) is for continuity only — e.g. answering
+   "why did you choose that?" by referencing what was just discussed. Never
+   pull a *new* fact from it; every factual claim must still trace to this
+   turn's VERIFIED FACTS or RETRIEVED EVIDENCE.
 """
 
 
@@ -63,8 +75,13 @@ def build_narration_messages(state: AgentState) -> list[dict]:
         "confidence": answer.get("confidence"),
     }
 
+    history = state.get("history", [])[-4:]
+    history_lines = [f"{m['role']}: {m['content'][:400]}" for m in history if m.get("content")]
+
     user = (
-        "VERIFIED FACTS AND CONTEXT (authoritative — do not contradict):\n"
+        "RECENT CONVERSATION (continuity only, not a source of new facts):\n"
+        + ("\n".join(history_lines) or "(this is the first message in the conversation)")
+        + "\n\nVERIFIED FACTS AND CONTEXT (authoritative — do not contradict):\n"
         + json.dumps(payload, indent=2)
         + "\n\nRETRIEVED EVIDENCE:\n"
         + (context_block or "(no passages retrieved)")

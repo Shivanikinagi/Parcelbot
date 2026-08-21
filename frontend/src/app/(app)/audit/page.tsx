@@ -41,7 +41,10 @@ export default function AuditPage() {
                     {audit?.map((r: any) => (
                       <TableRow key={r.id}>
                         <TableCell className="whitespace-nowrap text-xs text-muted-foreground">{formatDateTime(r.created_at)}</TableCell>
-                        <TableCell className="capitalize">{r.actor_role}</TableCell>
+                        <TableCell>
+                          <span className="capitalize">{r.actor_role}</span>
+                          {r.actor_name && <span className="ml-1 text-xs text-muted-foreground">· {r.actor_name}</span>}
+                        </TableCell>
                         <TableCell><Badge variant="muted">{r.action}</Badge></TableCell>
                         <TableCell className="text-muted-foreground">{r.resource_type}{r.resource_id ? ` · ${r.resource_id}` : ""}</TableCell>
                         <TableCell>{r.success ? <CheckCircle2 className="h-4 w-4 text-success" /> : <XCircle className="h-4 w-4 text-destructive" />}</TableCell>

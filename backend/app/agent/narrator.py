@@ -5,6 +5,12 @@ verified facts). Offline mode composes a deterministic Markdown reply from the
 same structured answer — so the platform produces genuinely useful, cited
 responses with no API key. Either way the *substance* is identical; only the
 phrasing differs.
+
+Deterministic replies (greeting, help, a clarifying question, an action
+result, an error) are returned directly and consistently whether or not an LLM
+is configured — there is nothing for the LLM to add to "Hello!" or "Which
+ticket would you like me to escalate?", and routing them through the LLM only
+risked an inconsistent, occasionally off-topic reply plus a wasted call.
 """
 
 from __future__ import annotations
@@ -20,8 +26,29 @@ from app.core.logging import get_logger
 logger = get_logger(__name__)
 
 
+def _compose_deterministic(state: AgentState) -> str | None:
+    """A canned reply for cases with nothing for the LLM to reason about."""
+    answer = state.get("answer", {})
+    if state.get("committed"):
+        return f"✅ {answer.get('summary', 'Action completed.')}"
+    if state.get("error"):
+        return answer.get("summary", state["error"])
+    if state.get("clarification"):
+        return f"❓ {state['clarification']}"
+    intent = state.get("intent", {}).get("type")
+    if intent in {"greeting", "help", "action_cancel_request"}:
+        return answer.get("summary", "")
+    return None
+
+
 def stream_narration(state: AgentState) -> Iterator[str]:
     """Yield chunks of the final reply."""
+    deterministic = _compose_deterministic(state)
+    if deterministic is not None:
+        for token in re.findall(r"\S+\s*", deterministic):
+            yield token
+        return
+
     llm = get_llm()
     if llm.available:
         try:
@@ -40,17 +67,12 @@ def stream_narration(state: AgentState) -> Iterator[str]:
 
 
 def compose_template(state: AgentState) -> str:
-    answer = state.get("answer", {})
-    intent = state.get("intent", {}).get("type")
-
-    if state.get("committed"):
-        return f"✅ {answer.get('summary', 'Action completed.')}"
-    if state.get("error"):
-        return answer.get("summary", state["error"])
-    if intent == "greeting":
-        return answer.get("summary", "Hello! How can I help with ParcelPilot support today?")
+    deterministic = _compose_deterministic(state)
+    if deterministic is not None:
+        return deterministic
 
     parts: list[str] = []
+    answer = state.get("answer", {})
     facts = answer.get("key_facts", [])
     citations = state.get("citations", [])
     cite_by_type = {c["source_type"]: c["marker"] for c in citations}
@@ -65,8 +87,23 @@ def compose_template(state: AgentState) -> str:
         passages = doc.data.get("passages", []) if doc else []
         if passages:
             top = passages[0]
-            parts.append(f"Based on **{top['title']} — {top['heading']}** [{cite_by_type.get(top['source_type'], 'S1')}]:")
-            parts.append(f"> {top['content']}")
+            general = None
+            # An unscoped question (no ticket/order/account in play) must lead
+            # with general policy, not one customer's contract — even if that
+            # contract happened to rank first on lexical/semantic similarity.
+            if state.get("context_account_id") is None and top["source_type"] == "customer_agreement":
+                general = next(
+                    (p for p in passages if p["source_type"] in {"policy", "sop", "operational_guide"}),
+                    None,
+                )
+            lead = general or top
+            parts.append(f"Based on **{lead['title']} — {lead['heading']}** [{cite_by_type.get(lead['source_type'], 'S1')}]:")
+            parts.append(f"> {lead['content']}")
+            if general is not None:
+                parts.append(
+                    f"_Note: **{top['title']}** sets different terms for that specific account — "
+                    f"{top['content'][:180]}{'…' if len(top['content']) > 180 else ''}_"
+                )
         else:
             parts.append(answer.get("summary", "I couldn't find relevant information for that request."))
 

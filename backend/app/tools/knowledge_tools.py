@@ -15,6 +15,10 @@ from app.tools.base import Tool, ToolContext, ToolResult
 class DocumentSearchArgs(BaseModel):
     query: str = Field(..., min_length=2, description="Natural-language search query.")
     top_k: int = Field(default=settings.retrieval_top_k, ge=1, le=12)
+    context_account_id: int | None = Field(
+        default=None,
+        description="Account this query is actually about (from a ticket/order/account entity or the caller's own account), if any. Scopes agreement-authority boosting so an unrelated customer's contract can't outrank general policy.",
+    )
 
 
 class DocumentSearchTool(Tool):
@@ -29,7 +33,9 @@ class DocumentSearchTool(Tool):
 
     def run(self, ctx: ToolContext, args: DocumentSearchArgs) -> ToolResult:
         chunks = ctx.knowledge().list_visible_chunks()
-        hits, confidence = HybridRetriever(chunks).retrieve(args.query, top_k=args.top_k)
+        hits, confidence = HybridRetriever(chunks).retrieve(
+            args.query, top_k=args.top_k, context_account_id=args.context_account_id
+        )
         conflicts = detect_source_conflicts(hits)
         citations = [Citation(**hit.citation(i + 1)) for i, hit in enumerate(hits)]
         summary = (

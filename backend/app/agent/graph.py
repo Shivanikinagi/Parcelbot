@@ -45,9 +45,20 @@ def get_graph():
     return graph.compile()
 
 
-def run_agent(ctx: ToolContext, query: str, confirm_action: dict | None = None) -> AgentState:
-    """Invoke the agent graph and return the final state."""
-    state = new_state(query, ctx, confirm_action)
+def run_agent(
+    ctx: ToolContext,
+    query: str,
+    confirm_action: dict | None = None,
+    history: list[dict] | None = None,
+) -> AgentState:
+    """Invoke the agent graph and return the final state.
+
+    ``history`` is the recent prior turns of this conversation (oldest first,
+    each ``{"role": ..., "content": ...}``) — used to carry forward entities
+    for natural follow-ups ("why did you choose that SLA?") and to give the
+    LLM narrator short-term conversational context.
+    """
+    state = new_state(query, ctx, confirm_action, history)
     # recursion_limit comfortably above our fixed node count.
     final = get_graph().invoke(state, {"recursion_limit": 50})
     return final  # type: ignore[return-value]

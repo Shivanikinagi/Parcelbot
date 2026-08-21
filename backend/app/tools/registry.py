@@ -8,6 +8,7 @@ decide which tools to call; the executor uses :func:`get_tool` to run them.
 from __future__ import annotations
 
 from app.core.security import Principal
+from app.tools.analytics_tools import AnalyticsTool
 from app.tools.action_tools import (
     EscalationCreatorTool,
     FollowUpTaskCreatorTool,
@@ -44,6 +45,7 @@ _ALL_TOOLS: list[Tool] = [
     EscalationCreatorTool(),
     FollowUpTaskCreatorTool(),
     TicketUpdateTool(),
+    AnalyticsTool(),
 ]
 
 TOOLS: dict[str, Tool] = {t.name: t for t in _ALL_TOOLS}

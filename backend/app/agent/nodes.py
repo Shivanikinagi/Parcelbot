@@ -7,7 +7,13 @@ agent's decisions.
 
 from __future__ import annotations
 
-from app.agent.intent import classify_intent, extract_entities, plan_tools
+from app.agent.intent import (
+    carry_forward_entities,
+    classify_intent,
+    detect_clarification,
+    extract_entities,
+    plan_tools,
+)
 from app.agent.state import AgentState, add_trace
 from app.core.constants import Confidence
 from app.core.logging import get_logger
@@ -15,6 +21,21 @@ from app.tools import registry
 from app.tools.base import ToolResult
 
 logger = get_logger(__name__)
+
+_HELP_TEXT = {
+    "customer": (
+        "I can help you check your orders and tickets, work out cancellation eligibility and fees, "
+        "check service-credit eligibility, and answer questions about your plan and agreement — always "
+        "with the policy or agreement cited. What would you like help with?"
+    ),
+    "internal": (
+        "I can look up tickets and orders, classify severity, calculate SLA targets and breach status, "
+        "assess cancellation and service-credit eligibility, search policies/SOPs/agreements, surface "
+        "proactive insights (SLA risk, recurring issues, cross-customer patterns), and prepare "
+        "escalations or follow-up tasks — state changes always wait for your confirmation. What would "
+        "you like to do?"
+    ),
+}
 
 
 # ---------------------------------------------------------------------------
@@ -62,6 +83,70 @@ def _dedupe_citations(citations: list[dict]) -> list[dict]:
     return ordered
 
 
+def _resolve_context_account_id(state: AgentState) -> int | None:
+    """Work out which account this query is actually about, if any.
+
+    Checked in priority order: a named ticket/order's own account, an explicit
+    ACCT- code (internal roles only), then the caller's own account. Used to
+    scope agreement-authority boosting in retrieval so an unrelated customer's
+    contract can't outrank general policy for an unscoped question.
+    """
+    ctx = state["ctx"]
+    entities = state["entities"]
+    principal = ctx.principal
+    ticket = entities["tickets"][0] if entities["tickets"] else None
+    order = entities["orders"][0] if entities["orders"] else None
+    account_code = entities["accounts"][0] if entities["accounts"] else None
+    try:
+        if ticket:
+            t = ctx.tickets().get_by_code(ticket)
+            if t:
+                return t.account_id
+        if order:
+            o = ctx.orders().get_by_code(order)
+            if o:
+                return o.account_id
+        if account_code and principal.role.is_internal:
+            a = ctx.accounts().get_by_code(account_code)
+            if a:
+                return a.id
+    except Exception:  # noqa: BLE001 — this is a best-effort hint, never fatal
+        logger.warning("context_account_id resolution failed", exc_info=True)
+    return principal.account_id
+
+
+def _mentions_other_account(state: AgentState) -> str | None:
+    """Explicitly refuse when a query names a company outside the caller's scope.
+
+    Complements code-based RBAC (which returns "not found") with a clear,
+    honest refusal when the *name* of another customer is used instead of a
+    code — e.g. "show me everything about Northstar Logistics" from a
+    LumenWorks customer. Only reads account names (never their data) to make
+    the comparison; managers/admins are exempt since any account is in scope.
+    """
+    ctx = state["ctx"]
+    principal = ctx.principal
+    if principal.role.is_privileged:
+        return None
+    from app.models.organization import Account
+
+    query_lower = state["query"].lower()
+    own_ids = principal.accessible_account_ids() or set()
+    try:
+        rows = ctx.session.query(Account.id, Account.name).all()
+    except Exception:  # noqa: BLE001
+        return None
+    for acc_id, name in rows:
+        if acc_id in own_ids or not name:
+            continue
+        if name.lower() in query_lower:
+            return (
+                f"I can only share information about your own account — I don't have visibility into "
+                f"{name}'s or any other customer's data."
+            )
+    return None
+
+
 # ---------------------------------------------------------------------------
 # nodes
 # ---------------------------------------------------------------------------
@@ -70,12 +155,14 @@ def intent_classification(state: AgentState) -> AgentState:
         state["intent"] = {"type": "confirm", "is_action": True, "raw": state["query"]}
         add_trace(state, "intent", "Confirmation", "Executing a previously prepared, user-approved action.")
         return state
-    entities = extract_entities(state["query"])
+    raw_entities = extract_entities(state["query"])
+    entities, carried = carry_forward_entities(raw_entities, state.get("history", []))
     intent = classify_intent(state["query"], entities)
     state["entities"] = entities
     state["intent"] = intent
     ents = ", ".join(v for grp in entities.values() for v in grp) or "none"
-    add_trace(state, "intent", f"Intent: {intent['type']}", f"Entities: {ents}")
+    detail = f"Entities: {ents}" + (" (carried forward from earlier in this conversation)" if carried else "")
+    add_trace(state, "intent", f"Intent: {intent['type']}", detail)
     return state
 
 
@@ -96,7 +183,24 @@ def planner(state: AgentState) -> AgentState:
     if state.get("confirm_action") or state.get("error"):
         state["plan"] = []
         return state
-    plan = plan_tools(state["intent"], state["entities"], state["ctx"].principal)
+
+    refusal = _mentions_other_account(state)
+    if refusal:
+        state["clarification"] = refusal
+        state["plan"] = []
+        add_trace(state, "planner", "Request declined", "Query names an account outside the caller's scope.")
+        return state
+
+    clarify = detect_clarification(state["intent"], state["entities"], state["ctx"].principal)
+    if clarify:
+        state["clarification"] = clarify
+        state["plan"] = []
+        add_trace(state, "planner", "Clarification requested", clarify)
+        return state
+
+    context_account_id = _resolve_context_account_id(state)
+    state["context_account_id"] = context_account_id
+    plan = plan_tools(state["intent"], state["entities"], state["ctx"].principal, context_account_id)
     state["plan"] = plan
     steps = " → ".join(c["tool"] for c in plan) or "direct answer"
     add_trace(state, "planner", f"Planned {len(plan)} tool call(s)", steps)
@@ -130,6 +234,10 @@ def reasoner(state: AgentState) -> AgentState:
     key_facts: list[str] = []
     evidence: list[dict] = []
 
+    if "analytics_tool" in results and results["analytics_tool"].ok:
+        for line in results["analytics_tool"].data.get("lines", []):
+            key_facts.append(line)
+            evidence.append({"kind": "computation", "label": "Analytics", "detail": line})
     if "sla_calculator" in results and results["sla_calculator"].ok:
         sla = results["sla_calculator"].data["sla"]
         key_facts.append(
@@ -173,6 +281,15 @@ def reasoner(state: AgentState) -> AgentState:
         if r and not r.ok and r.error == "not_found":
             key_facts.insert(0, r.summary)
 
+    # If nothing else produced a fact (e.g. the only tool called was denied by
+    # permission, as with a customer asking for internal analytics), surface
+    # that tool's own explanation instead of a generic non-answer.
+    if not key_facts:
+        for call in state.get("tool_calls", []):
+            if not call["ok"] and call.get("summary"):
+                key_facts.append(call["summary"])
+                break
+
     state["evidence"] = evidence
     state["answer"] = {"summary": "", "key_facts": key_facts, "recommendation": ""}
 
@@ -184,7 +301,7 @@ def reasoner(state: AgentState) -> AgentState:
         k in results and results[k].ok
         for k in (
             "sla_calculator", "cancellation_evaluator", "service_credit_evaluator",
-            "service_credit_scenario_evaluator", "ticket_lookup", "order_lookup",
+            "service_credit_scenario_evaluator", "ticket_lookup", "order_lookup", "analytics_tool",
         )
     )
     # A scenario-based verdict rests on the caller's self-reported facts (not a
@@ -272,14 +389,22 @@ def confirmation(state: AgentState) -> AgentState:
 def response_generator(state: AgentState) -> AgentState:
     state["citations"] = _dedupe_citations(state.get("citations", []))
     answer = state.get("answer", {}) or {}
+    itype = state["intent"].get("type")
 
     if state.get("committed"):
         answer["summary"] = state["committed"]["summary"]
         answer["recommendation"] = "Action completed."
     elif state.get("error"):
         answer["summary"] = state["error"]
-    elif state["intent"].get("type") == "greeting":
+    elif state.get("clarification"):
+        answer["summary"] = state["clarification"]
+    elif itype == "greeting":
         answer["summary"] = "Hello! I'm the ParcelPilot support assistant. Ask me about orders, tickets, SLAs, cancellations, or service credits."
+    elif itype == "help":
+        role_key = "internal" if state["ctx"].principal.role.is_internal else "customer"
+        answer["summary"] = _HELP_TEXT[role_key]
+    elif itype == "action_cancel_request":
+        answer["summary"] = "Understood — I won't make that change. Nothing was modified."
     else:
         primary = answer.get("key_facts", [])
         answer["summary"] = primary[0] if primary else "Here's what I found based on the available evidence."

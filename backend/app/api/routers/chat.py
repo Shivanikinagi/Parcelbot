@@ -76,10 +76,15 @@ def chat_message(body: ChatRequest, principal: Principal = Depends(enforce_rate_
             conv_id = conversation.id
             ctx = ToolContext(db, principal, request_id=request_id, conversation_id=conv_id)
 
+            # Snapshot prior turns BEFORE adding this one, so the agent can
+            # carry forward context (e.g. "why did you choose that SLA?").
+            prior_messages = conv_repo.messages(conv_id) if body.conversation_id else []
+            history = [{"role": m.role, "content": m.content} for m in prior_messages[-8:]]
+
             conv_repo.add_message(conv_id, "user", body.message)
             yield _sse({"type": "start", "conversation_id": conv_id})
 
-            state = run_agent(ctx, body.message, body.confirm_action)
+            state = run_agent(ctx, body.message, body.confirm_action, history=history)
             meta = _build_meta(state)
             yield _sse({"type": "meta", "conversation_id": conv_id, "meta": meta})
 

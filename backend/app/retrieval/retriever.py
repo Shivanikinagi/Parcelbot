@@ -97,8 +97,20 @@ class HybridRetriever:
         )
 
     def retrieve(
-        self, query: str, *, top_k: int | None = None
+        self, query: str, *, top_k: int | None = None, context_account_id: int | None = None
     ) -> tuple[list[ScoredChunk], float]:
+        """Retrieve and rank evidence for ``query``.
+
+        ``context_account_id``, when known (from a ticket/order/account named in
+        the query, or the caller's own account), scopes the customer-agreement
+        authority boost to *that* account's agreement only. Without it, every
+        agreement in the corpus would get the same rank-1 boost regardless of
+        whose contract it is — which otherwise causes a generic, unscoped
+        question ("what are the SLA targets?") to surface one customer's
+        override as if it were the universal answer. An agreement chunk for a
+        different (or unspecified-context) account is still retrievable on its
+        lexical/semantic merits — it just doesn't get the artificial rank-1 lift.
+        """
         top_k = top_k or settings.retrieval_top_k
         if not self._chunks or self._bm25 is None:
             return [], 0.0
@@ -124,9 +136,20 @@ class HybridRetriever:
         for i, chunk in enumerate(self._chunks):
             relevance = alpha * vec_n[i] + (1 - alpha) * bm25_n[i]
             try:
-                auth = authority_weight(SourceType(chunk.source_type))
+                chunk_source_type = SourceType(chunk.source_type)
+                auth = authority_weight(chunk_source_type)
             except ValueError:
+                chunk_source_type = None
                 auth = 0.4
+            if (
+                chunk_source_type == SourceType.CUSTOMER_AGREEMENT
+                and chunk.account_id is not None
+                and chunk.account_id != context_account_id
+            ):
+                # Not this query's account — demote to SOP-level authority so it
+                # can still surface on relevance, but never outranks the general
+                # policy purely for being "an agreement".
+                auth = authority_weight(SourceType.SOP)
             fresh = _freshness_factor(chunk.effective_date, chunk.status)
             final = relevance * (0.6 + 0.4 * auth) * fresh
             scored.append(

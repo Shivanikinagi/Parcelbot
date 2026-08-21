@@ -118,7 +118,8 @@ class Tool:
         try:
             if self.required_permission and not ctx.principal.can(self.required_permission):
                 raise AccessDeniedError(
-                    f"Role '{ctx.principal.role.value}' cannot use tool '{self.name}'."
+                    f"Your current role ({ctx.principal.role.value}) doesn't have permission for that.",
+                    details={"required_permission": self.required_permission, "role": ctx.principal.role.value},
                 )
             try:
                 args = self.input_model(**(raw_args or {}))

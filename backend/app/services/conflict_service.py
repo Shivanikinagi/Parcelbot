@@ -47,7 +47,11 @@ def detect_source_conflicts(chunks: list[ScoredChunk]) -> list[Conflict]:
     # 2. Historical ticket contradicting higher-authority guidance.
     if by_type.get("historical_ticket") and current_authoritative:
         hist = by_type["historical_ticket"][0]
-        best = min(current_authoritative, key=lambda c: c.authority_rank)
+        # Pick by final score (relevance × authority × freshness), not authority
+        # rank alone — otherwise an unrelated but authority-boosted agreement
+        # chunk can get cited as "the authoritative source" for a conflict it
+        # has nothing to do with.
+        best = max(current_authoritative, key=lambda c: c.scores.get("final", 0.0))
         conflicts.append(
             Conflict(
                 topic="Historical ticket vs current guidance",
