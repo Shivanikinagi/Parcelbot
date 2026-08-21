@@ -276,9 +276,12 @@ def reasoner(state: AgentState) -> AgentState:
             evidence.append({"kind": "document", "label": m["code"], "detail": m["guidance"]})
 
     # Surface RBAC-blocked / not-found lookups explicitly (no silent fallback).
+    # Downstream evaluators (e.g. cancellation_evaluator) that depend on a
+    # missing order/ticket repeat the same lookup summary verbatim — dedupe so
+    # the answer doesn't state the same fact twice.
     for key in ("order_lookup", "ticket_lookup", "cancellation_evaluator", "service_credit_evaluator", "sla_calculator"):
         r = results.get(key)
-        if r and not r.ok and r.error == "not_found":
+        if r and not r.ok and r.error == "not_found" and r.summary not in key_facts:
             key_facts.insert(0, r.summary)
 
     # If nothing else produced a fact (e.g. the only tool called was denied by
@@ -318,6 +321,15 @@ def reasoner(state: AgentState) -> AgentState:
         r = results.get(key)
         if r and r.ok and (r.data.get(field) or {}).get("uncertainty"):
             conf = min(conf, 0.55)
+    # A record the query depends on (order/ticket) was not found or is out of the
+    # caller's scope: nothing was actually verified, so retrieval confidence over
+    # generic policy text must not be reported as confidence in the answer.
+    unresolved_record = any(
+        (r := results.get(k)) and not r.ok and r.error == "not_found"
+        for k in ("order_lookup", "ticket_lookup")
+    )
+    if unresolved_record:
+        conf = min(conf, 0.2)
     state["confidence"] = round(min(1.0, conf), 3)
     add_trace(state, "reasoner", "Synthesised findings",
               f"{len(key_facts)} key fact(s); confidence {state['confidence']:.2f} ({Confidence.from_score(state['confidence']).name}).")
