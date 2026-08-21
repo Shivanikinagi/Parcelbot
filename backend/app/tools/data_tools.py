@@ -156,6 +156,63 @@ class CustomerHistoryTool(Tool):
         )
 
 
+class AuditLogArgs(BaseModel):
+    limit: int = Field(default=15, ge=1, le=100, description="How many recent entries to return.")
+
+
+class AuditLogTool(Tool):
+    name = "audit_log"
+    description = (
+        "Read the immutable audit trail of state-changing actions (escalations created, tickets "
+        "updated, follow-up tasks) taken by staff, most recent first. Manager/admin only."
+    )
+    input_model = AuditLogArgs
+    required_permission = "view_audit"
+
+    def run(self, ctx: ToolContext, args: AuditLogArgs) -> ToolResult:
+        # Every conversational turn writes a routine "agent_turn" audit record
+        # (see audit_logger), which would otherwise drown out the actual
+        # state-changing actions this tool is meant to surface. Scan a wider
+        # window and prioritise the state changes; report the turn volume
+        # separately instead of interleaving it.
+        entries = ctx.audit().list_recent(limit=max(args.limit * 5, 100))
+        accounts_by_id = {a.id: a.name for a in ctx.accounts().list_accounts()}
+
+        state_changes = [e for e in entries if e.action != "agent_turn"][: args.limit]
+        routine_turns = sum(1 for e in entries if e.action == "agent_turn")
+
+        rows = []
+        lines = []
+        for e in state_changes:
+            account_name = accounts_by_id.get(e.account_id) if e.account_id else None
+            rows.append({
+                "created_at": e.created_at.isoformat() if e.created_at else None,
+                "actor_role": e.actor_role,
+                "action": e.action,
+                "resource_type": e.resource_type,
+                "resource_id": e.resource_id,
+                "account": account_name,
+                "success": e.success,
+            })
+            target = f"{e.resource_type} {e.resource_id}".strip()
+            scope = f" ({account_name})" if account_name else ""
+            lines.append(f"{e.actor_role} {e.action} {target}{scope}".strip())
+
+        if lines:
+            summary = f"{len(lines)} recent state-changing action(s): " + "; ".join(lines[:5])
+            summary += "…" if len(lines) > 5 else ""
+        else:
+            summary = "No state-changing actions (escalations, ticket updates, tasks) in the recent audit window."
+        if routine_turns:
+            summary += f" ({routine_turns} routine assistant turn(s) also logged in this window.)"
+
+        return ToolResult(
+            tool=self.name, ok=True, summary=summary,
+            data={"entries": rows, "routine_turns_in_window": routine_turns},
+            citations=[_STRUCTURED_CITATION],
+        )
+
+
 class StructuredQueryArgs(BaseModel):
     entity: Literal["orders", "tickets", "accounts"]
     account_code: str | None = None

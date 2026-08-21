@@ -17,6 +17,7 @@ from app.tools.action_tools import (
 from app.tools.base import Tool
 from app.tools.data_tools import (
     AgreementLookupTool,
+    AuditLogTool,
     CustomerHistoryTool,
     OrderLookupTool,
     StructuredDataQueryTool,
@@ -37,6 +38,7 @@ _ALL_TOOLS: list[Tool] = [
     TicketLookupTool(),
     AgreementLookupTool(),
     CustomerHistoryTool(),
+    AuditLogTool(),
     StructuredDataQueryTool(),
     SLACalculatorTool(),
     CancellationEvaluatorTool(),

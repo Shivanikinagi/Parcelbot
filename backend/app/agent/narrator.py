@@ -135,9 +135,4 @@ def compose_template(state: AgentState) -> str:
             f"This will:\n{cons}\n\nReply **confirm** to proceed, or **cancel** to abort."
         )
 
-    # 6. Sources.
-    if citations:
-        src = "; ".join(f"[{c['marker']}] {c['title']} — {c['heading']}" for c in citations)
-        parts.append(f"\n_Sources: {src}_")
-
     return "\n\n".join(parts)

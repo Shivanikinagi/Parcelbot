@@ -7,6 +7,8 @@ agent's decisions.
 
 from __future__ import annotations
 
+import re
+
 from app.agent.intent import (
     carry_forward_entities,
     classify_intent,
@@ -139,7 +141,11 @@ def _mentions_other_account(state: AgentState) -> str | None:
     for acc_id, name in rows:
         if acc_id in own_ids or not name:
             continue
-        if name.lower() in query_lower:
+        # Match the full legal name ("Northstar Logistics") as well as its
+        # distinctive first word ("Northstar") as a whole word — people
+        # naming another customer almost always drop the corporate suffix.
+        candidates = {name.lower(), name.split()[0].lower()}
+        if any(re.search(rf"\b{re.escape(c)}\b", query_lower) for c in candidates):
             return (
                 f"I can only share information about your own account — I don't have visibility into "
                 f"{name}'s or any other customer's data."
@@ -238,6 +244,9 @@ def reasoner(state: AgentState) -> AgentState:
         for line in results["analytics_tool"].data.get("lines", []):
             key_facts.append(line)
             evidence.append({"kind": "computation", "label": "Analytics", "detail": line})
+    if "audit_log" in results and results["audit_log"].ok:
+        key_facts.append(results["audit_log"].summary)
+        evidence.append({"kind": "computation", "label": "Audit trail", "detail": results["audit_log"].summary})
     if "sla_calculator" in results and results["sla_calculator"].ok:
         sla = results["sla_calculator"].data["sla"]
         key_facts.append(
@@ -305,6 +314,7 @@ def reasoner(state: AgentState) -> AgentState:
         for k in (
             "sla_calculator", "cancellation_evaluator", "service_credit_evaluator",
             "service_credit_scenario_evaluator", "ticket_lookup", "order_lookup", "analytics_tool",
+            "audit_log",
         )
     )
     # A scenario-based verdict rests on the caller's self-reported facts (not a

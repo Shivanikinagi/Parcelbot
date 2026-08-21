@@ -108,11 +108,13 @@ _INTENT_SIGNALS: list[tuple[str, str]] = [
     ("cancellation", r"\bcancel"),
     ("service_credit", r"\b(service credit|credit|refund|compensat|failed pickup|missed pickup)\b"),
     ("analytics", r"\b(analy[sz]e|analytics|cluster|trend|recurring|unusual pattern|urgent issues?|"
-                  r"multiple customers|which accounts|same (known )?issue|approaching.*sla|"
-                  r"exceeding.*sla|summary of support|most (frequent|urgent)|highest number of|"
-                  r"top (issue|customer)|carrier failures?)\b"),
+                  r"multiple customers|which (accounts|tickets|orders)|same (known )?issue|approaching.*sla|"
+                  r"exceeding.*sla|breach\w*.*(sla|target)|summary of support|overview of (support|ticket|operations)|"
+                  r"support activity|breakdown (by|of)|most (frequent|urgent)|highest number of|"
+                  r"top (issue|customer|\d+|three)|carrier failures?)\b"),
     ("sla", r"\b(sla|response time|first response|breach|target|how long|deadline)\b"),
     ("triage", r"\b(severity|triage|priorit|classify|what.*priority|how bad)\b"),
+    ("audit", r"\baudit\b"),
     ("history", r"\b(history|past ticket|previous ticket|earlier|prior)\b"),
     ("help", r"^\s*(what can you( help| do)|can you help|how can you help|help me\b(?!.{0,10}\b(order|pickup|ticket|shipment))|"
              r"what (do you|can this) do)\b"),
@@ -127,7 +129,7 @@ _VAGUE_PROBLEM_RE = re.compile(
 # Distinguishes "what IS the [general] SLA policy" (answerable generically) from
 # "is THIS ticket/account breaching SLA" (needs a specific target to compute).
 _SLA_COMPUTE_RE = re.compile(
-    r"\b(breach|overdue|exceed|remaining|elapsed|is it|has it|my (ticket|sla|account)|this ticket|"
+    r"\b(breach\w*|overdue|exceed\w*|remaining|elapsed|is it|has it|my (ticket|sla|account)|this ticket|"
     r"still (within|on) target)\b",
     re.IGNORECASE,
 )
@@ -135,8 +137,14 @@ _SLA_COMPUTE_RE = re.compile(
 
 def classify_intent(query: str, entities: dict) -> dict:
     q = query.lower()
+    # A named ticket/order is a per-record question ("has TKT-501 breached?"),
+    # never the aggregate/cross-record question analytics phrasing implies —
+    # keep it on the specific-record path even if the wording overlaps.
+    has_specific_entity = bool(entities.get("tickets") or entities.get("orders"))
     matched = None
     for name, pattern in _INTENT_SIGNALS:
+        if name == "analytics" and has_specific_entity:
+            continue
         if re.search(pattern, q, re.IGNORECASE):
             matched = name
             break
@@ -185,10 +193,12 @@ def _analytics_focus(query: str) -> str:
     q = query.lower()
     if re.search(r"cluster|same.*issue|underlying issue", q):
         return "clusters"
-    if re.search(r"approaching|exceeding|breach|sla risk|urgent", q):
+    if re.search(r"approaching|exceeding|breach|sla risk|urgent|which tickets", q):
         return "sla_risk"
     if re.search(r"multiple customers|which accounts|affected", q):
         return "cross_customer"
+    if re.search(r"overview|breakdown|by severity|severity and|summary of support", q):
+        return "summary"
     return "insights"
 
 
@@ -215,6 +225,10 @@ def plan_tools(
             "analytics_tool", {"focus": _analytics_focus(query)}, "structured",
             "Pull live, data-backed proactive insights instead of citing static policy text.",
         )
+        return plan
+
+    if itype == "audit":
+        add("audit_log", {}, "structured", "Read the immutable audit trail of recent state-changing actions.")
         return plan
 
     # Almost everything benefits from grounding in the knowledge base.
