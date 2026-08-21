@@ -1,0 +1,43 @@
+# ---------------------------------------------------------------------------
+# ParcelPilot — root .gitignore
+# ---------------------------------------------------------------------------
+
+# Secrets & local env
+**/.env
+**/.env.local
+**/.env.*.local
+!**/.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+htmlcov/
+.coverage
+*.sqlite3
+*.db
+
+# Node / Next.js
+node_modules/
+.next/
+out/
+dist/
+build/
+*.tsbuildinfo
+.turbo/
+
+# Editor / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Logs & local data
+*.log
+/data/
+backend/data/

@@ -1,0 +1,93 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+
+  /* Light theme — clean, neutral slate with an indigo primary. */
+  --background: 210 40% 99%;
+  --foreground: 222 47% 11%;
+  --card: 0 0% 100%;
+  --card-foreground: 222 47% 11%;
+  --popover: 0 0% 100%;
+  --popover-foreground: 222 47% 11%;
+  --primary: 243 75% 59%;
+  --primary-foreground: 0 0% 100%;
+  --secondary: 210 40% 96%;
+  --secondary-foreground: 222 47% 11%;
+  --muted: 210 40% 96%;
+  --muted-foreground: 215 16% 47%;
+  --accent: 243 75% 96%;
+  --accent-foreground: 243 75% 40%;
+  --destructive: 0 72% 51%;
+  --destructive-foreground: 0 0% 100%;
+  --success: 142 71% 40%;
+  --success-foreground: 0 0% 100%;
+  --warning: 38 92% 50%;
+  --warning-foreground: 0 0% 100%;
+  --border: 214 32% 91%;
+  --input: 214 32% 91%;
+  --ring: 243 75% 59%;
+  --radius: 0.7rem;
+}
+
+.dark {
+  /* Dark theme — deep slate, elevated cards, luminous indigo. */
+  --background: 222 47% 6%;
+  --foreground: 210 40% 96%;
+  --card: 222 44% 9%;
+  --card-foreground: 210 40% 96%;
+  --popover: 222 44% 9%;
+  --popover-foreground: 210 40% 96%;
+  --primary: 245 80% 67%;
+  --primary-foreground: 0 0% 100%;
+  --secondary: 217 33% 15%;
+  --secondary-foreground: 210 40% 96%;
+  --muted: 217 33% 14%;
+  --muted-foreground: 215 20% 62%;
+  --accent: 245 40% 20%;
+  --accent-foreground: 245 80% 82%;
+  --destructive: 0 63% 52%;
+  --destructive-foreground: 0 0% 100%;
+  --success: 142 65% 45%;
+  --success-foreground: 0 0% 100%;
+  --warning: 38 92% 55%;
+  --warning-foreground: 20 14% 10%;
+  --border: 217 33% 18%;
+  --input: 217 33% 20%;
+  --ring: 245 80% 67%;
+}
+
+* {
+  border-color: hsl(var(--border));
+}
+
+body {
+  background-color: hsl(var(--background));
+  color: hsl(var(--foreground));
+  font-feature-settings: "cv11", "ss01";
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Thin, themed scrollbars. */
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-thumb { background: hsl(var(--border)); border-radius: 9999px; border: 2px solid transparent; background-clip: content-box; }
+::-webkit-scrollbar-thumb:hover { background: hsl(var(--muted-foreground) / 0.4); background-clip: content-box; }
+
+/* Subtle grid backdrop utility for hero/empty states. */
+.bg-grid {
+  background-image: radial-gradient(hsl(var(--border)) 1px, transparent 1px);
+  background-size: 22px 22px;
+}
+
+/* Typographic defaults for streamed markdown. */
+.prose-chat h1, .prose-chat h2, .prose-chat h3 { font-weight: 650; margin: 0.6em 0 0.3em; }
+.prose-chat p { margin: 0.5em 0; line-height: 1.65; }
+.prose-chat ul { margin: 0.4em 0; padding-left: 1.2em; list-style: disc; }
+.prose-chat li { margin: 0.2em 0; }
+.prose-chat blockquote { border-left: 3px solid hsl(var(--primary)); padding-left: 0.8em; color: hsl(var(--muted-foreground)); margin: 0.5em 0; }
+.prose-chat code { font-family: var(--font-mono); font-size: 0.85em; background: hsl(var(--muted)); padding: 0.1em 0.35em; border-radius: 4px; }
+.prose-chat strong { font-weight: 650; }
+.prose-chat a { color: hsl(var(--primary)); text-decoration: underline; }
