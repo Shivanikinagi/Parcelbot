@@ -7,7 +7,6 @@ import { toast } from "sonner";
 import type { ChatMessage } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-import { ConfidenceBadge } from "@/components/common/badges";
 import { Markdown } from "./markdown";
 import { EvidencePanels } from "./evidence-panels";
 import { ConfirmationCard } from "./confirmation-card";
@@ -54,19 +53,18 @@ export function MessageBubble({
         <Sparkles className="h-4 w-4" />
       </div>
       <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-2">
-          <span className="text-sm font-medium">Support Intelligence</span>
-          {meta && <ConfidenceBadge band={meta.confidence_band} score={meta.confidence} />}
-          {!message.streaming && (
-            <button
-              onClick={copy}
-              className="ml-auto opacity-0 transition-opacity group-hover:opacity-100"
-              aria-label="Copy"
-            >
-              {copied ? <Check className="h-3.5 w-3.5 text-success" /> : <Copy className="h-3.5 w-3.5 text-muted-foreground" />}
-            </button>
-          )}
-        </div>
+<div className="flex items-center gap-2">
+           <span className="text-sm font-medium">ParcelPilot</span>
+           {!message.streaming && (
+             <button
+               onClick={copy}
+               className="ml-auto opacity-0 transition-opacity group-hover:opacity-100"
+               aria-label="Copy"
+             >
+               {copied ? <Check className="h-3.5 w-3.5 text-success" /> : <Copy className="h-3.5 w-3.5 text-muted-foreground" />}
+             </button>
+           )}
+         </div>
 
         <div className="mt-1">
           {message.content ? (

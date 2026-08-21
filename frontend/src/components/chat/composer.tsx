@@ -63,6 +63,9 @@ export function Composer({
           placeholder="Ask about an order, ticket, SLA, cancellation, or service credit…"
           className="max-h-[180px] flex-1 resize-none bg-transparent px-2 py-1.5 text-sm outline-none placeholder:text-muted-foreground"
         />
+        <p className="text-center text-[11px] text-muted-foreground">
+          Every answer is backed by policy citations. Actions require your confirmation.
+        </p>
         <Button size="icon" onClick={submit} disabled={busy || !value.trim()} className="rounded-xl">
           {busy ? <Square className="h-4 w-4" /> : <ArrowUp className="h-4 w-4" />}
         </Button>

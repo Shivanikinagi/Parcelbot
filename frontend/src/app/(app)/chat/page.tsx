@@ -139,7 +139,7 @@ function ChatInner() {
       <div className="flex items-center justify-between px-5 py-3">
         <div className="flex items-center gap-2 text-sm text-muted-foreground">
           <Sparkles className="h-4 w-4 text-primary" />
-          Support Intelligence
+          ParcelPilot
         </div>
         <Button variant="ghost" size="sm" onClick={newChat}>
           <Plus className="h-4 w-4" /> New chat
@@ -181,7 +181,7 @@ function EmptyState({ isInternal }: { isInternal: boolean }) {
       <h2 className="text-xl font-semibold">How can I help?</h2>
       <p className="mt-1 max-w-md text-sm text-muted-foreground">
         {isInternal
-          ? "Triage tickets, compute SLAs, resolve source conflicts, and take audited actions — every answer is cited."
+          ? "Triage tickets, compute SLAs, resolve policy conflicts, and take audited actions — every answer is cited."
           : "Ask about your orders, tickets, cancellations, and service credits. Every answer cites the policy it's based on."}
       </p>
     </div>

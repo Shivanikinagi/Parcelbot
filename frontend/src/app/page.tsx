@@ -14,12 +14,12 @@ import {
 import { Button } from "@/components/ui/button";
 
 const FEATURES = [
-  { icon: Workflow, title: "Agentic reasoning", body: "A LangGraph agent plans, retrieves, reasons, resolves conflicts, and acts across multiple tools." },
-  { icon: Search, title: "Hybrid RAG", body: "BM25 + vector retrieval with MMR, re-ranking, and per-source confidence scoring." },
-  { icon: Scale, title: "Source hierarchy", body: "Agreements outrank policy, which outranks SOPs and deprecated docs — conflicts explained, never hidden." },
-  { icon: ShieldCheck, title: "RBAC at the data layer", body: "Access control lives in the repository, not the prompt. Customers can never see another account." },
-  { icon: FileCheck, title: "Confirmed, audited actions", body: "State changes are prepared, explained, confirmed, executed, then written to an immutable audit log." },
-  { icon: Gauge, title: "Deterministic facts", body: "SLAs, fees, and eligibility are computed in code — the LLM only narrates verified results." },
+  { icon: Workflow, title: "Intelligent reasoning", body: "Answers complex support questions by analyzing agreements, policies, and historical decisions — not just keywords." },
+  { icon: Search, title: "Precise retrieval", body: "Finds the exact clauses and precedents that matter, ranked by authority and relevance." },
+  { icon: Scale, title: "Authority-based resolution", body: "Contracts outrank policies, which outrank SOPs — conflicts are resolved and explained transparently." },
+  { icon: ShieldCheck, title: "Data-level access control", body: "Customers only ever see their own accounts, orders, and tickets — enforced in the database layer." },
+  { icon: FileCheck, title: "Confirmed actions only", body: "State changes are prepared, explained, confirmed, executed, then written to an immutable audit log." },
+  { icon: Gauge, title: "Verified facts, not guesses", body: "SLAs, fees, and eligibility are computed in code — the agent only narrates verified results." },
 ];
 
 export default function Landing() {
@@ -41,13 +41,13 @@ export default function Landing() {
         <div className="absolute inset-0 bg-grid opacity-40" />
         <div className="container relative py-24 text-center">
           <div className="mx-auto mb-5 inline-flex items-center gap-2 rounded-full border border-border bg-card px-3 py-1 text-xs text-muted-foreground">
-            <span className="h-1.5 w-1.5 rounded-full bg-success" /> Enterprise AI Support · ParcelPilot
+            <span className="h-1.5 w-1.5 rounded-full bg-success" /> Enterprise Support Intelligence
           </div>
           <h1 className="mx-auto max-w-3xl text-5xl font-semibold leading-[1.1] tracking-tight">
             The support agent that <span className="text-primary">reasons, cites, and never oversteps</span>.
           </h1>
           <p className="mx-auto mt-5 max-w-2xl text-lg text-muted-foreground">
-            ParcelPilot Support Intelligence answers with evidence, resolves conflicting policies by authority,
+            ParcelPilot answers with evidence, resolves conflicting policies by authority,
             and asks before it acts — engineered for the reliability enterprises demand.
           </p>
           <div className="mt-8 flex items-center justify-center gap-3">
