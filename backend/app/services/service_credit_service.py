@@ -152,3 +152,128 @@ def evaluate_service_credit(
         conflicts=conflicts,
         citations=citations,
     )
+
+
+def evaluate_service_credit_scenario(
+    account: Account,
+    agreement: Agreement | None,
+    *,
+    delay_hours: float,
+    carrier_fault: bool,
+    customer_fault: bool = False,
+) -> ServiceCreditResult:
+    """Evaluate eligibility from a *described* scenario, not a specific order.
+
+    Handles hypothetical questions like "my pickup was 3 hours late, carrier's
+    fault — do I get a credit?" that name no order. Applies the same threshold
+    rule as :func:`evaluate_service_credit` against the caller's real contract
+    terms, so the verdict is genuinely computed rather than a citation dump —
+    but without an order record we can't always resolve an exact rupee amount
+    (the SOP default needs a shipment fee), so that case is stated honestly.
+    """
+    citations = [_SOP_CITATION]
+    credit_terms = (
+        agreement.terms.get("service_credit", {})
+        if agreement and isinstance(agreement.terms, dict)
+        else {}
+    )
+    replaces_sop = bool(credit_terms.get("replaces_sop"))
+    threshold_minutes = (
+        credit_terms.get("delay_threshold_minutes")
+        if replaces_sop
+        else SOP_DEFAULTS["service_credit"]["delay_threshold_minutes"]
+    ) or SOP_DEFAULTS["service_credit"]["delay_threshold_minutes"]
+    minutes_past = int(round(delay_hours * 60))
+    threshold_h = threshold_minutes / 60
+    contract_label = "your agreement" if replaces_sop else "the default SOP"
+
+    if replaces_sop:
+        citations.insert(
+            0,
+            Citation(
+                document_code=agreement.code,
+                title=agreement.title,
+                heading="§3 Failed-pickup credits",
+                source_type="customer_agreement",
+                status="current",
+                authority_rank=1,
+                source_file=agreement.source_file,
+            ),
+        )
+
+    if not carrier_fault:
+        return ServiceCreditResult(
+            eligible=False,
+            minutes_past_window=minutes_past,
+            reason=(
+                "You'd need to confirm carrier fault — per SOP §3, a credit can't be promised "
+                "unless carrier fault, timing, and absence of customer fault are all established."
+            ),
+            uncertainty="Carrier fault not confirmed.",
+            citations=citations,
+        )
+    if customer_fault:
+        return ServiceCreditResult(
+            eligible=False,
+            minutes_past_window=minutes_past,
+            reason="A customer-caused issue disqualifies a failed-pickup credit (SOP §2).",
+            citations=citations,
+        )
+    if minutes_past <= threshold_minutes:
+        return ServiceCreditResult(
+            eligible=False,
+            minutes_past_window=minutes_past,
+            basis="agreement" if replaces_sop else "sop_default",
+            reason=(
+                f"Based on the {delay_hours:g}-hour delay you described: this does not exceed the "
+                f"{threshold_h:g}-hour threshold that applies to your account under {contract_label}, "
+                "so no service credit would apply."
+            ),
+            citations=citations,
+        )
+
+    # Eligible — resolve an exact amount only when the contract fixes one.
+    conflicts: list[Conflict] = []
+    if replaces_sop and credit_terms.get("type") == "fixed":
+        amount = float(credit_terms["amount_inr"])
+        basis = "agreement"
+        amount_phrase = f"a fixed INR {amount:.0f} credit under your agreement §3"
+        conflicts.append(
+            Conflict(
+                topic="Failed-pickup credit amount & threshold",
+                description="Your agreement defines a different threshold and amount than the SOP default.",
+                sources=[
+                    ConflictSource(label=f"{account.name} agreement §3", value=f"INR {amount:.0f} fixed, >{threshold_h:g}h threshold", authority_rank=1),
+                    ConflictSource(label="SOP v4 §2 default", value="lower of INR 500 or 10% of fee, >2h threshold", authority_rank=3),
+                ],
+                resolution="Your signed agreement replaces the SOP default for this account (Support Policy §1).",
+                resolved_value=f"INR {amount:.0f}",
+            )
+        )
+    else:
+        amount = None
+        basis = "sop_default"
+        amount_phrase = (
+            "a credit equal to the lower of INR 500 or 10% of the shipment fee (SOP §2 default) — "
+            "share the order code for an exact figure"
+        )
+
+    monthly_cap = credit_terms.get("monthly_cap_inr")
+    requires_approval = bool(amount and amount > SOP_DEFAULTS["service_credit"]["manager_approval_above_inr"])
+
+    return ServiceCreditResult(
+        eligible=True,
+        amount_inr=amount or 0.0,
+        basis=basis,
+        minutes_past_window=minutes_past,
+        requires_manager_approval=requires_approval,
+        monthly_cap_inr=monthly_cap,
+        reason=(
+            f"Based on the {delay_hours:g}-hour delay you described (carrier at fault, no customer "
+            f"fault): this exceeds the {threshold_h:g}-hour threshold under {contract_label}, so "
+            f"you'd be eligible for {amount_phrase}. This reflects the scenario as described, not a "
+            "specific verified order."
+        ),
+        conflicts=conflicts,
+        citations=citations,
+    )

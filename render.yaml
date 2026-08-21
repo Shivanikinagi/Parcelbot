@@ -1,0 +1,56 @@
+# Render Blueprint — deploys the full ParcelPilot stack with one click.
+#
+# Usage: on render.com, "New +" → "Blueprint" → connect this repo → Apply.
+# Render provisions a free Postgres instance, the FastAPI backend, and the
+# Next.js frontend, wires DATABASE_URL automatically, and cross-links the
+# frontend's BACKEND_ORIGIN to the backend's own Render URL.
+#
+# After the first deploy, set LLM_API_KEY on the backend service (Render
+# dashboard → parcelpilot-backend → Environment) to switch from the offline
+# mock to live OpenRouter narration. Everything else works immediately.
+
+databases:
+  - name: parcelpilot-db
+    plan: free
+    databaseName: parcelpilot
+    user: parcelpilot
+
+services:
+  - type: web
+    name: parcelpilot-backend
+    runtime: python
+    plan: free
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /api/health
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: parcelpilot-db
+          property: connectionString
+      - key: AUTH_SECRET
+        generateValue: true
+      - key: CORS_ORIGINS
+        value: https://parcelpilot-web.onrender.com
+      - key: LLM_API_KEY
+        sync: false
+      - key: LLM_MODEL
+        value: openai/gpt-4o-mini
+      - key: REFERENCE_TIME
+        value: "2026-08-16 11:00"
+      - key: APP_ENV
+        value: production
+      - key: LOG_LEVEL
+        value: INFO
+
+  - type: web
+    name: parcelpilot-web
+    runtime: node
+    plan: free
+    rootDir: frontend
+    buildCommand: npm install && npm run build
+    startCommand: npm run start
+    envVars:
+      - key: BACKEND_ORIGIN
+        value: https://parcelpilot-backend.onrender.com

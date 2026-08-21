@@ -5,7 +5,10 @@ import pytest
 from app.repositories.logistics_repo import AgreementRepository, OrderRepository, TicketRepository
 from app.repositories.organization_repo import AccountRepository
 from app.services.cancellation_service import evaluate_cancellation
-from app.services.service_credit_service import evaluate_service_credit
+from app.services.service_credit_service import (
+    evaluate_service_credit,
+    evaluate_service_credit_scenario,
+)
 from app.services.severity_service import classify_severity
 from app.services.sla_service import compute_sla
 
@@ -97,4 +100,48 @@ def test_service_credit_refused_when_no_carrier_fault(session, admin):
     order = OrderRepository(session, admin).get_by_code("ORD-4001")  # delivered, no fault
     account = _account(session, admin, "ACCT-004")
     result = evaluate_service_credit(order, account, _agreement(session, admin, account))
+    assert result.eligible is False
+
+
+# --- Hypothetical scenario reasoning (no order code — from the brief's own
+# example: "A pickup is three hours late because of carrier fault. Should I
+# get a service credit?") ------------------------------------------------
+
+def test_scenario_lumenworks_below_their_agreement_threshold(session, admin):
+    account = _account(session, admin, "ACCT-002")  # LumenWorks: >4h fixed INR 300
+    result = evaluate_service_credit_scenario(
+        account, _agreement(session, admin, account),
+        delay_hours=3, carrier_fault=True, customer_fault=False,
+    )
+    assert result.eligible is False  # 3h does not exceed their 4h threshold
+
+
+def test_scenario_lumenworks_above_their_agreement_threshold(session, admin):
+    account = _account(session, admin, "ACCT-002")
+    result = evaluate_service_credit_scenario(
+        account, _agreement(session, admin, account),
+        delay_hours=5, carrier_fault=True, customer_fault=False,
+    )
+    assert result.eligible is True
+    assert result.amount_inr == 300.0
+    assert result.basis == "agreement"
+
+
+def test_scenario_falls_back_to_sop_default_with_no_agreement(session, admin):
+    account = _account(session, admin, "ACCT-003")  # Beacon: no custom agreement
+    result = evaluate_service_credit_scenario(
+        account, _agreement(session, admin, account),
+        delay_hours=3, carrier_fault=True, customer_fault=False,
+    )
+    assert result.eligible is True  # 3h exceeds the SOP default 2h threshold
+    assert result.basis == "sop_default"
+    assert result.amount_inr == 0.0  # exact amount needs a real order's fee
+
+
+def test_scenario_customer_fault_is_refused(session, admin):
+    account = _account(session, admin, "ACCT-002")
+    result = evaluate_service_credit_scenario(
+        account, _agreement(session, admin, account),
+        delay_hours=5, carrier_fault=False, customer_fault=True,
+    )
     assert result.eligible is False

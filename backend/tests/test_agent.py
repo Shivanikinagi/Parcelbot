@@ -40,6 +40,20 @@ def test_confirm_action_commits(ctx_factory, session):
     assert session.query(Escalation).count() == before + 1
 
 
+def test_hypothetical_service_credit_question_from_brief(ctx_factory):
+    """The assessment brief's own example: a hypothetical with no order code.
+
+    LumenWorks' agreement requires >4h; a 3h delay must NOT be treated as
+    eligible just because it's phrased the same way as the qualifying example.
+    """
+    ctx = ctx_factory("ravi@lumenworks.example")
+    state = run_agent(ctx, "A pickup is three hours late because of carrier fault. Should I get a service credit?")
+    assert "service_credit_scenario_evaluator" in [t["tool"] for t in state["tool_calls"]]
+    scenario = state["results"]["service_credit_scenario_evaluator"].data["service_credit_scenario"]
+    assert scenario["eligible"] is False
+    assert "4" in state["answer"]["key_facts"][0]  # cites their 4-hour threshold
+
+
 def test_greeting_has_no_tool_calls(ctx_factory):
     ctx = ctx_factory("anjali@northstar.example")
     state = run_agent(ctx, "hello there")

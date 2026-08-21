@@ -11,7 +11,10 @@ from typing import Literal
 from pydantic import BaseModel, Field, model_validator
 
 from app.services.cancellation_service import evaluate_cancellation
-from app.services.service_credit_service import evaluate_service_credit
+from app.services.service_credit_service import (
+    evaluate_service_credit,
+    evaluate_service_credit_scenario,
+)
 from app.services.severity_service import classify_severity
 from app.services.sla_service import compute_sla
 from app.tools.base import Tool, ToolContext, ToolResult
@@ -90,6 +93,46 @@ class CancellationEvaluatorTool(Tool):
         return ToolResult(
             tool=self.name, ok=True, summary=result.reason,
             data={"cancellation": result.model_dump(mode="json")},
+            citations=result.citations, conflicts=result.conflicts,
+        )
+
+
+class ServiceCreditScenarioArgs(BaseModel):
+    delay_hours: float = Field(..., gt=0, le=72, description="How many hours past the pickup window, as described by the user.")
+    carrier_fault: bool = Field(default=False, description="Whether the user attributed the delay to carrier fault.")
+    customer_fault: bool = Field(default=False, description="Whether a customer-caused issue was mentioned.")
+    account_code: str | None = Field(default=None, description="Account code; omit to use the caller's own account.")
+
+
+class ServiceCreditScenarioTool(Tool):
+    name = "service_credit_scenario_evaluator"
+    description = (
+        "Assess failed-pickup service-credit eligibility from a described scenario (a delay "
+        "length and fault attribution given in natural language) against the caller's account "
+        "contract, for hypothetical questions that don't name a specific order."
+    )
+    input_model = ServiceCreditScenarioArgs
+    required_permission = "read_own"
+
+    def run(self, ctx: ToolContext, args: ServiceCreditScenarioArgs) -> ToolResult:
+        account = None
+        if args.account_code:
+            account = ctx.accounts().get_by_code(args.account_code)
+        elif ctx.principal.account_id is not None:
+            account = ctx.accounts().get_by_id(ctx.principal.account_id)
+        if account is None:
+            return ToolResult(
+                tool=self.name, ok=False, error="account_required",
+                summary="I need an account to check contract terms against — please specify one.",
+            )
+        agreement = ctx.agreements().get_current_for_account(account.id)
+        result = evaluate_service_credit_scenario(
+            account, agreement, delay_hours=args.delay_hours,
+            carrier_fault=args.carrier_fault, customer_fault=args.customer_fault,
+        )
+        return ToolResult(
+            tool=self.name, ok=True, summary=result.reason,
+            data={"service_credit_scenario": result.model_dump(mode="json")},
             citations=result.citations, conflicts=result.conflicts,
         )
 

@@ -18,6 +18,49 @@ _ORDER_RE = re.compile(r"\bORD-?\d+\b", re.IGNORECASE)
 _TICKET_RE = re.compile(r"\bTKT-?\d+\b", re.IGNORECASE)
 _ACCOUNT_RE = re.compile(r"\bACCT-?\d+\b", re.IGNORECASE)
 
+_NUMBER_WORDS = {
+    "half": 0.5, "a": 1, "an": 1, "one": 1, "two": 2, "three": 3, "four": 4,
+    "five": 5, "six": 6, "seven": 7, "eight": 8, "nine": 9, "ten": 10,
+}
+_HOURS_RE = re.compile(
+    r"\b(?:(?P<num>\d+(?:\.\d+)?)|(?P<word>half|a|an|one|two|three|four|five|six|seven|eight|nine|ten))"
+    r"\s*(?:hours?|hrs?|h)\b",
+    re.IGNORECASE,
+)
+_CARRIER_FAULT_RE = re.compile(
+    r"carrier(?:'s)?\s+fault|carrier\s+(?:is|was)\s+at\s+fault|fault\s+of\s+the\s+carrier|"
+    r"(?:due|because)\s+(?:to|of)\s+(?:the\s+)?carrier",
+    re.IGNORECASE,
+)
+_CUSTOMER_FAULT_RE = re.compile(
+    r"\b(?:my|our|the\s+customer(?:'s)?)\s+fault\b|customer[- ]caused",
+    re.IGNORECASE,
+)
+
+
+def extract_scenario_params(query: str) -> dict | None:
+    """Pull a hypothetical delay/fault scenario out of free text, if present.
+
+    Powers hypothetical questions with no order code — e.g. "my pickup was
+    three hours late because of carrier fault, do I get a credit?" — by giving
+    the planner enough structured signal to run the real eligibility rule
+    against the caller's account instead of just citing the policy text.
+    """
+    m = _HOURS_RE.search(query)
+    if not m:
+        return None
+    if m.group("num"):
+        hours = float(m.group("num"))
+    else:
+        hours = _NUMBER_WORDS.get(m.group("word").lower())
+        if hours is None:
+            return None
+    carrier_fault = bool(_CARRIER_FAULT_RE.search(query))
+    customer_fault = bool(_CUSTOMER_FAULT_RE.search(query))
+    if not carrier_fault and not customer_fault:
+        return None  # not enough signal to reason about fault-based eligibility
+    return {"delay_hours": hours, "carrier_fault": carrier_fault, "customer_fault": customer_fault}
+
 
 def _norm(code: str) -> str:
     return code.upper().replace("ORD", "ORD-").replace("TKT", "TKT-").replace("ACCT", "ACCT-").replace("--", "-")
@@ -102,6 +145,18 @@ def plan_tools(intent: dict, entities: dict, principal: Principal) -> list[Plann
         add("cancellation_evaluator", {"order_code": order}, "structured", "Assess cancellation eligibility and fee.")
     if itype == "service_credit" and order:
         add("service_credit_evaluator", {"order_code": order}, "structured", "Assess service-credit eligibility.")
+    elif itype == "service_credit":
+        # No order named — try to reason over a described scenario instead of
+        # only citing the policy text (see extract_scenario_params).
+        scenario = extract_scenario_params(query)
+        if scenario:
+            args = dict(scenario)
+            if entities["accounts"] and principal.role.is_internal:
+                args["account_code"] = entities["accounts"][0]
+            add(
+                "service_credit_scenario_evaluator", args, "structured",
+                "Assess eligibility from the described delay/fault against the account's contract terms.",
+            )
     if itype == "history":
         add("customer_history", _default_account_arg(principal, entities), "structured", "Pull account order/ticket history.")
     if itype in {"sla", "knowledge", "general"} and not ticket and (entities["accounts"] or principal.account_id):

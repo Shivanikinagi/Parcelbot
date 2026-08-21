@@ -26,6 +26,7 @@ from app.tools.reasoning_tools import (
     CancellationEvaluatorTool,
     SLACalculatorTool,
     ServiceCreditEvaluatorTool,
+    ServiceCreditScenarioTool,
 )
 
 _ALL_TOOLS: list[Tool] = [
@@ -39,6 +40,7 @@ _ALL_TOOLS: list[Tool] = [
     SLACalculatorTool(),
     CancellationEvaluatorTool(),
     ServiceCreditEvaluatorTool(),
+    ServiceCreditScenarioTool(),
     EscalationCreatorTool(),
     FollowUpTaskCreatorTool(),
     TicketUpdateTool(),

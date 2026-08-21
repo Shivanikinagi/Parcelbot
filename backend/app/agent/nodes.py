@@ -153,6 +153,10 @@ def reasoner(state: AgentState) -> AgentState:
             + (" (manager approval required)" if c.get("requires_manager_approval") else "") + "."
         )
         evidence.append({"kind": "computation", "label": "Service credit", "detail": c["reason"]})
+    if "service_credit_scenario_evaluator" in results and results["service_credit_scenario_evaluator"].ok:
+        c = results["service_credit_scenario_evaluator"].data["service_credit_scenario"]
+        key_facts.append(c["reason"])
+        evidence.append({"kind": "computation", "label": "Service credit (scenario)", "detail": c["reason"]})
     if "ticket_lookup" in results and results["ticket_lookup"].ok:
         t = results["ticket_lookup"].data
         sev = t.get("classified_severity", {})
@@ -178,11 +182,22 @@ def reasoner(state: AgentState) -> AgentState:
     retr_conf = doc.data.get("confidence", 0.0) if doc else 0.0
     has_structured = any(
         k in results and results[k].ok
-        for k in ("sla_calculator", "cancellation_evaluator", "service_credit_evaluator", "ticket_lookup", "order_lookup")
+        for k in (
+            "sla_calculator", "cancellation_evaluator", "service_credit_evaluator",
+            "service_credit_scenario_evaluator", "ticket_lookup", "order_lookup",
+        )
     )
+    # A scenario-based verdict rests on the caller's self-reported facts (not a
+    # verified order), so it's genuinely computed but slightly less certain.
     conf = max(retr_conf, 0.82) if has_structured else retr_conf
+    if "service_credit_scenario_evaluator" in results and results["service_credit_scenario_evaluator"].ok:
+        conf = min(conf, 0.75)
     # Explicit "don't-promise-when-uncertain" signals lower confidence.
-    for key, field in (("cancellation_evaluator", "cancellation"), ("service_credit_evaluator", "service_credit")):
+    for key, field in (
+        ("cancellation_evaluator", "cancellation"),
+        ("service_credit_evaluator", "service_credit"),
+        ("service_credit_scenario_evaluator", "service_credit_scenario"),
+    ):
         r = results.get(key)
         if r and r.ok and (r.data.get(field) or {}).get("uncertainty"):
             conf = min(conf, 0.55)
