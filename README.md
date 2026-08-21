@@ -5,7 +5,7 @@
 > authority**, computes SLAs and eligibility **deterministically**, and takes **audited, confirmed
 > actions** — with **role-based access enforced at the data layer**, not the prompt.
 
-Built for the ParcelPilot AI Agent assessment, engineered to production standards: clean layered
+Engineered to production standards: clean layered
 architecture, a real **LangGraph** agent, hybrid **RAG**, strict **RBAC**, full observability, tests,
 and a polished **Next.js** UI.
 
