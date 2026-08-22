@@ -43,6 +43,23 @@ class KnowledgeRepository(ScopedRepository):
     def get_document(self, document_id: int) -> Document | None:
         return self.session.get(Document, document_id)
 
+    def get_document_by_code(self, code: str) -> Document | None:
+        """RBAC-checked lookup used to let a citation be opened and read in full."""
+        doc = self.session.scalar(select(Document).where(Document.code == code))
+        if doc is None or not self.can_access_account(doc.account_id):
+            return None
+        if doc.internal_only and not self.principal.role.is_internal:
+            return None
+        return doc
+
+    def list_chunks_for_document(self, document_id: int) -> list[DocumentChunk]:
+        stmt = self._visible_chunk_filter(
+            select(DocumentChunk)
+            .where(DocumentChunk.document_id == document_id)
+            .order_by(DocumentChunk.chunk_index)
+        )
+        return list(self.session.scalars(stmt))
+
     def list_documents(self, include_internal: bool = True) -> list[Document]:
         stmt = select(Document).order_by(Document.source_type, Document.code)
         allowed = self._scope_ids()

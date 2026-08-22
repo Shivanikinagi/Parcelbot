@@ -29,6 +29,15 @@ whole app" prompt.
 - **Debugging real integration issues**: e.g. diagnosing that a Neon Postgres connection string needed an
   explicit `+psycopg` SQLAlchemy driver suffix, and that Windows port conflicts from earlier dev-server
   runs were blocking new ones — both found and fixed by inspecting actual error output, not guessed.
+- **A second, role-by-role hardening pass**: I supplied an explicit test plan (specific questions for each
+  of the five roles, plus a security-focused RBAC/injection sequence) after noticing a misleading
+  confidence badge myself while using the app. Claude reproduced the bug against the live agent (not by
+  inspection), traced it to confidence being derived from retrieval quality instead of whether the named
+  record actually resolved, then ran the full test plan programmatically against the running backend
+  (script-driven calls through the real LangGraph agent for every role) to find the rest — a bare-name
+  RBAC-refusal gap, an SLA-regex tense bug, and a dead-end "audit history" intent — before fixing and
+  re-verifying each one, live, in the browser. Nothing in the Product Note's hardening section is asserted
+  without having been reproduced and re-checked against the running app.
 
 ## What I did myself
 

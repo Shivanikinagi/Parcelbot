@@ -1,11 +1,14 @@
 "use client";
 
 import * as React from "react";
-import { AlertTriangle, FileText, GitBranch, Wrench, CheckCircle2, XCircle, Scale, ChevronDown, ChevronUp, Search, AlertCircle, Terminal, ShieldCheck, ShieldAlert, ShieldQuestion } from "lucide-react";
-import type { ChatMeta } from "@/lib/types";
+import { useQuery } from "@tanstack/react-query";
+import { AlertTriangle, FileText, GitBranch, Wrench, CheckCircle2, XCircle, Scale, ChevronDown, ChevronUp, Search, AlertCircle, Terminal, ShieldCheck, ShieldAlert, ShieldQuestion, ExternalLink } from "lucide-react";
+import type { ChatMeta, Citation } from "@/lib/types";
 import { titleCase } from "@/lib/utils";
+import { apiFetch } from "@/lib/api";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 
 const SOURCE_LABEL: Record<string, string> = {
@@ -52,6 +55,87 @@ function ConfidenceIndicator({ band, score }: { band?: string; score?: number })
   );
 }
 
+interface DocumentSection {
+  heading: string;
+  content: string;
+  status: string;
+  authority_rank: number;
+}
+
+interface DocumentDetail {
+  code: string;
+  title: string;
+  source_type: string;
+  status: string;
+  version: string;
+  internal_only: boolean;
+  effective_date: string | null;
+  sections: DocumentSection[];
+}
+
+function SourceDocumentDialog({ target, onClose }: { target: { code: string; heading: string } | null; onClose: () => void }) {
+  const { data, isFetching, isError } = useQuery({
+    queryKey: ["kb-document", target?.code],
+    queryFn: () => apiFetch<DocumentDetail>(`/knowledge/documents/${encodeURIComponent(target!.code)}`),
+    enabled: !!target,
+  });
+  const highlightRef = React.useRef<HTMLDivElement | null>(null);
+
+  React.useEffect(() => {
+    if (data) highlightRef.current?.scrollIntoView({ block: "center" });
+  }, [data]);
+
+  return (
+    <Dialog open={!!target} onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="max-w-2xl max-h-[80vh] overflow-hidden p-0">
+        <div className="max-h-[80vh] overflow-y-auto p-6">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 pr-6">
+              <FileText className="h-4 w-4 shrink-0 text-primary" />
+              <span>{data?.title ?? "Loading document…"}</span>
+            </DialogTitle>
+            {data && (
+              <DialogDescription asChild>
+                <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                  <Badge variant="muted" className="text-[10px]">{data.code} · {data.version}</Badge>
+                  <Badge variant="muted" className="text-[10px]">{SOURCE_LABEL[data.source_type] ?? titleCase(data.source_type)}</Badge>
+                  {data.status === "deprecated" && <Badge variant="destructive" className="text-[10px]">deprecated</Badge>}
+                  {data.internal_only && <Badge variant="secondary" className="text-[10px]">internal</Badge>}
+                </div>
+              </DialogDescription>
+            )}
+          </DialogHeader>
+
+          <div className="mt-4 space-y-3">
+            {isFetching && <p className="text-sm text-muted-foreground">Loading…</p>}
+            {isError && <p className="text-sm text-destructive">Couldn't load this document — it may be outside your access scope.</p>}
+            {data?.sections.map((s) => {
+              const isCited = s.heading === target?.heading;
+              return (
+                <div
+                  key={s.heading}
+                  ref={isCited ? highlightRef : undefined}
+                  className={cn(
+                    "rounded-lg border p-3 transition-colors",
+                    isCited ? "border-primary/50 bg-primary/5" : "border-border/60",
+                  )}
+                >
+                  <div className="mb-1 flex items-center gap-2">
+                    <span className="text-sm font-medium">{s.heading}</span>
+                    {isCited && <Badge className="text-[10px]">cited</Badge>}
+                    {s.status === "deprecated" && <Badge variant="destructive" className="text-[10px]">deprecated</Badge>}
+                  </div>
+                  <p className="whitespace-pre-wrap text-sm text-muted-foreground">{s.content}</p>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 export function EvidencePanels({ meta }: { meta: ChatMeta }) {
   const hasSources = meta.citations?.length > 0;
   const hasConflicts = meta.conflicts?.length > 0;
@@ -60,6 +144,7 @@ export function EvidencePanels({ meta }: { meta: ChatMeta }) {
   if (!hasSources && !hasConflicts && !hasTrace && !hasTools) return null;
 
   const [expanded, setExpanded] = React.useState(false);
+  const [docTarget, setDocTarget] = React.useState<{ code: string; heading: string } | null>(null);
   const totalItems = (meta.citations?.length || 0) + (meta.conflicts?.length || 0) + (meta.trace?.length || 0) + (meta.tool_calls?.length || 0);
 
   const first = hasSources ? "sources" : hasConflicts ? "conflicts" : hasTrace ? "reasoning" : "tools";
@@ -103,19 +188,32 @@ export function EvidencePanels({ meta }: { meta: ChatMeta }) {
 
             {hasSources && (
               <TabsContent value="sources" className="space-y-1.5 pt-1.5">
-                {meta.citations.map((c) => (
-                  <div key={c.marker + c.heading} className="flex items-start gap-2 rounded border border-border/50 p-2">
-                    <span className="mt-0.5 rounded bg-primary/10 px-1 py-0.5 text-[10px] font-semibold text-primary">{c.marker}</span>
-                    <div className="min-w-0 flex-1">
-                      <div className="truncate text-sm font-medium">{c.title}</div>
-                      <div className="truncate text-[11px] text-muted-foreground">{c.heading}</div>
-                    </div>
-                    <div className="flex shrink-0 items-center gap-1">
-                      <AuthorityDot rank={c.authority_rank} />
-                      <Badge variant="muted" className="text-[10px]">{SOURCE_LABEL[c.source_type] ?? titleCase(c.source_type)}</Badge>
-                    </div>
-                  </div>
-                ))}
+                {meta.citations.map((c) => {
+                  const viewable = c.source_type !== "structured_data";
+                  return (
+                    <button
+                      key={c.marker + c.heading}
+                      type="button"
+                      disabled={!viewable}
+                      onClick={() => viewable && setDocTarget({ code: c.document_code, heading: c.heading })}
+                      className={cn(
+                        "flex w-full items-start gap-2 rounded border border-border/50 p-2 text-left transition-colors",
+                        viewable && "cursor-pointer hover:border-primary/40 hover:bg-primary/5",
+                      )}
+                    >
+                      <span className="mt-0.5 rounded bg-primary/10 px-1 py-0.5 text-[10px] font-semibold text-primary">{c.marker}</span>
+                      <div className="min-w-0 flex-1">
+                        <div className="truncate text-sm font-medium">{c.title}</div>
+                        <div className="truncate text-[11px] text-muted-foreground">{c.heading}</div>
+                      </div>
+                      <div className="flex shrink-0 items-center gap-1">
+                        <AuthorityDot rank={c.authority_rank} />
+                        <Badge variant="muted" className="text-[10px]">{SOURCE_LABEL[c.source_type] ?? titleCase(c.source_type)}</Badge>
+                        {viewable && <ExternalLink className="h-3 w-3 text-muted-foreground" />}
+                      </div>
+                    </button>
+                  );
+                })}
               </TabsContent>
             )}
 
@@ -174,6 +272,7 @@ export function EvidencePanels({ meta }: { meta: ChatMeta }) {
           </Tabs>
         </div>
       )}
+      <SourceDocumentDialog target={docTarget} onClose={() => setDocTarget(null)} />
     </div>
   );
 }

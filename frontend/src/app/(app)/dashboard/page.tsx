@@ -38,7 +38,7 @@ export default function DashboardPage() {
   return (
     <div>
       <PageHeader title="Operations" description="Proactive issue detection across your accounts." />
-      <div className="space-y-6 p-6">
+      <div className="space-y-7 p-6">
         {/* KPIs */}
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
           <StatCard label="Accounts" value={t.accounts} icon={Building2} />
@@ -50,26 +50,28 @@ export default function DashboardPage() {
 
         {/* AI insights */}
         <Card className="border-primary/30 bg-primary/[0.03]">
-          <CardHeader className="pb-2">
+          <CardHeader className="pb-3">
             <CardTitle className="flex items-center gap-2 text-base">
               <Lightbulb className="h-4 w-4 text-primary" /> AI Insights
             </CardTitle>
           </CardHeader>
-          <CardContent className="space-y-2">
+          <CardContent className="space-y-2.5">
             {data.ai_insights.map((s: string, i: number) => (
-              <div key={i} className="text-sm">{s}</div>
+              <div key={i} className="rounded-lg border border-border/50 bg-background/40 px-3 py-2 text-sm leading-relaxed">
+                {s}
+              </div>
             ))}
           </CardContent>
         </Card>
 
-        <div className="grid gap-4 lg:grid-cols-2">
+        <div className="grid gap-5 lg:grid-cols-2">
           {/* High severity tickets */}
           <Card>
-            <CardHeader className="pb-2"><CardTitle className="flex items-center gap-2 text-base"><Activity className="h-4 w-4" /> High-severity tickets</CardTitle></CardHeader>
-            <CardContent className="space-y-2">
+            <CardHeader className="pb-3"><CardTitle className="flex items-center gap-2 text-base"><Activity className="h-4 w-4" /> High-severity tickets</CardTitle></CardHeader>
+            <CardContent className="space-y-2.5">
               {data.high_severity_tickets.length === 0 && <Empty />}
               {data.high_severity_tickets.map((r: any) => (
-                <div key={r.code} className="flex items-center gap-3 rounded-lg border border-border/60 p-2.5">
+                <div key={r.code} className="flex items-center gap-3 rounded-lg border border-border/60 p-3">
                   <SeverityBadge severity={r.severity} />
                   <div className="min-w-0 flex-1">
                     <div className="truncate text-sm font-medium">{r.subject}</div>
@@ -83,11 +85,11 @@ export default function DashboardPage() {
 
           {/* SLA breaches */}
           <Card>
-            <CardHeader className="pb-2"><CardTitle className="flex items-center gap-2 text-base"><AlertTriangle className="h-4 w-4 text-destructive" /> SLA breaches</CardTitle></CardHeader>
-            <CardContent className="space-y-2">
+            <CardHeader className="pb-3"><CardTitle className="flex items-center gap-2 text-base"><AlertTriangle className="h-4 w-4 text-destructive" /> SLA breaches</CardTitle></CardHeader>
+            <CardContent className="space-y-2.5">
               {data.sla_breaches.length === 0 && <Empty label="No breaches — all within target." />}
               {data.sla_breaches.map((r: any) => (
-                <div key={r.code} className="flex items-center gap-3 rounded-lg border border-destructive/30 bg-destructive/5 p-2.5">
+                <div key={r.code} className="flex items-center gap-3 rounded-lg border border-destructive/30 bg-destructive/5 p-3">
                   <SeverityBadge severity={r.severity} />
                   <div className="min-w-0 flex-1">
                     <div className="truncate text-sm font-medium">{r.code} · {r.account}</div>
@@ -100,17 +102,17 @@ export default function DashboardPage() {
 
           {/* Recurring problems */}
           <Card>
-            <CardHeader className="pb-2"><CardTitle className="flex items-center gap-2 text-base"><Repeat className="h-4 w-4" /> Recurring problems</CardTitle></CardHeader>
-            <CardContent className="space-y-2">
+            <CardHeader className="pb-3"><CardTitle className="flex items-center gap-2 text-base"><Repeat className="h-4 w-4" /> Recurring problems</CardTitle></CardHeader>
+            <CardContent className="space-y-2.5">
               {data.recurring_problems.length === 0 && <Empty />}
               {data.recurring_problems.map((k: any) => (
-                <div key={k.code} className="rounded-lg border border-border/60 p-2.5">
+                <div key={k.code} className="rounded-lg border border-border/60 p-3">
                   <div className="flex items-center gap-2">
                     <Badge variant="warning">{k.code}</Badge>
                     <span className="text-sm font-medium">{k.title}</span>
                     <Badge variant="muted" className="ml-auto">{k.count}×</Badge>
                   </div>
-                  <p className="mt-1 text-xs text-muted-foreground line-clamp-2">{k.guidance}</p>
+                  <p className="mt-1.5 text-xs leading-relaxed text-muted-foreground line-clamp-2">{k.guidance}</p>
                 </div>
               ))}
             </CardContent>
@@ -118,7 +120,7 @@ export default function DashboardPage() {
 
           {/* Customer health */}
           <Card>
-            <CardHeader className="pb-2"><CardTitle className="flex items-center gap-2 text-base"><Building2 className="h-4 w-4" /> Customer health</CardTitle></CardHeader>
+            <CardHeader className="pb-3"><CardTitle className="flex items-center gap-2 text-base"><Building2 className="h-4 w-4" /> Customer health</CardTitle></CardHeader>
             <CardContent className="space-y-3">
               {data.customer_health.map((a: any) => (
                 <div key={a.code}>
@@ -136,8 +138,8 @@ export default function DashboardPage() {
 
           {/* Carrier problems */}
           <Card>
-            <CardHeader className="pb-2"><CardTitle className="flex items-center gap-2 text-base"><Truck className="h-4 w-4" /> Carrier problems</CardTitle></CardHeader>
-            <CardContent className="space-y-2">
+            <CardHeader className="pb-3"><CardTitle className="flex items-center gap-2 text-base"><Truck className="h-4 w-4" /> Carrier problems</CardTitle></CardHeader>
+            <CardContent className="space-y-2.5">
               {data.carrier_problems.map((c: any) => (
                 <div key={c.carrier} className="flex items-center justify-between rounded-lg border border-border/60 p-2.5 text-sm">
                   <span className="font-medium">{c.carrier}</span>
@@ -149,10 +151,10 @@ export default function DashboardPage() {
 
           {/* Open investigations */}
           <Card>
-            <CardHeader className="pb-2"><CardTitle className="flex items-center gap-2 text-base"><Search className="h-4 w-4" /> Open investigations</CardTitle></CardHeader>
-            <CardContent className="space-y-2">
+            <CardHeader className="pb-3"><CardTitle className="flex items-center gap-2 text-base"><Search className="h-4 w-4" /> Open investigations</CardTitle></CardHeader>
+            <CardContent className="space-y-2.5">
               {data.open_investigations.map((k: any) => (
-                <div key={k.code} className="flex items-center gap-2 rounded-lg border border-border/60 p-2.5">
+                <div key={k.code} className="flex items-center gap-2 rounded-lg border border-border/60 p-3">
                   <Badge variant="warning">{k.code}</Badge>
                   <span className="text-sm">{k.title}</span>
                   <StatusPill status={k.status} />
@@ -164,11 +166,11 @@ export default function DashboardPage() {
 
         {/* Recent escalations */}
         <Card>
-          <CardHeader className="pb-2"><CardTitle className="flex items-center gap-2 text-base"><ArrowUpRight className="h-4 w-4" /> Recent escalations</CardTitle></CardHeader>
-          <CardContent className="space-y-2">
+          <CardHeader className="pb-3"><CardTitle className="flex items-center gap-2 text-base"><ArrowUpRight className="h-4 w-4" /> Recent escalations</CardTitle></CardHeader>
+          <CardContent className="space-y-2.5">
             {data.recent_escalations.length === 0 && <Empty label="No escalations yet." />}
             {data.recent_escalations.map((e: any) => (
-              <div key={e.code} className="flex items-center gap-3 rounded-lg border border-border/60 p-2.5">
+              <div key={e.code} className="flex items-center gap-3 rounded-lg border border-border/60 p-3">
                 <Badge variant="muted">{e.code}</Badge>
                 <SeverityBadge severity={e.severity} />
                 <span className="min-w-0 flex-1 truncate text-sm">{e.reason}</span>

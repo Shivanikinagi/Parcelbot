@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_db, get_principal
@@ -26,6 +26,36 @@ def list_documents(db: Session = Depends(get_db), principal: Principal = Depends
         }
         for d in docs
     ]
+
+
+@router.get("/documents/{code}")
+def get_document(code: str, db: Session = Depends(get_db), principal: Principal = Depends(get_principal)):
+    from app.repositories.knowledge_repo import KnowledgeRepository
+
+    repo = KnowledgeRepository(db, principal)
+    doc = repo.get_document_by_code(code.strip().upper())
+    if doc is None:
+        raise HTTPException(status_code=404, detail="Document not found or not in your scope.")
+    chunks = repo.list_chunks_for_document(doc.id)
+    return {
+        "code": doc.code,
+        "title": doc.title,
+        "source_type": doc.source_type,
+        "status": doc.status,
+        "version": doc.version,
+        "internal_only": doc.internal_only,
+        "source_file": doc.source_file,
+        "effective_date": doc.effective_date.isoformat() if doc.effective_date else None,
+        "sections": [
+            {
+                "heading": c.heading,
+                "content": c.content,
+                "status": c.status,
+                "authority_rank": c.authority_rank,
+            }
+            for c in chunks
+        ],
+    }
 
 
 @router.get("/search")

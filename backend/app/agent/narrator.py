@@ -112,27 +112,30 @@ def compose_template(state: AgentState) -> str:
         if ev["kind"] == "document" and ev["label"].startswith("KI-"):
             parts.append(f"**{ev['label']}** — {ev['detail']}")
 
-    # 3. Conflicts.
+    # 3. Conflicts — a short pointer only. The full per-source breakdown and
+    # resolution already render as a structured, readable panel in the
+    # Conflicts tab below; repeating every source inline as one dense
+    # semicolon-joined bullet just duplicates it in a much worse format.
     conflicts = state.get("conflicts", [])
     if conflicts:
-        lines = ["**⚠️ Conflicting sources — resolved by authority:**"]
-        for c in conflicts:
-            src = "; ".join(f"{s['label']} → {s['value']}" for s in c.get("sources", []))
-            lines.append(f"- *{c['topic']}*: {src}. **Resolution:** {c['resolution']}")
-        parts.append("\n".join(lines))
+        topics = ", ".join(f"*{c['topic']}*" for c in conflicts)
+        parts.append(
+            f"**⚠️ Sources disagreed on {topics}** — resolved by authority "
+            f"(agreement > policy > SOP > historical). See the **Conflicts** tab below for the full breakdown."
+        )
 
-    # 4. Escalation recommendation.
-    esc = state.get("escalation")
-    if esc and esc.get("recommended"):
-        parts.append(f"**Recommended action:** Escalate now — {esc['reason']}")
+    # 4. Escalation is intentionally not repeated here as prose — the
+    # dedicated red escalation banner right below this message already states
+    # it clearly.
 
-    # 5. Pending action → confirmation.
+    # 5. Pending action — the confirmation card below (with its own
+    # Confirm/Cancel buttons) is the actual interactive control, and it stops
+    # rendering once a newer turn arrives. Keep one short line here, not the
+    # old "reply confirm or cancel" instruction (misleading once the buttons
+    # are gone) or the repeated consequences list (already itemised there),
+    # just enough that the history still shows an action was proposed.
     pending = state.get("pending_action")
     if pending:
-        cons = "\n".join(f"  - {c}" for c in pending.get("consequences", []))
-        parts.append(
-            f"**Confirmation required** before I proceed:\n\n> {pending['human']}\n\n"
-            f"This will:\n{cons}\n\nReply **confirm** to proceed, or **cancel** to abort."
-        )
+        parts.append(f"**Awaiting your confirmation:** {pending['human']}")
 
     return "\n\n".join(parts)
