@@ -93,8 +93,17 @@ class Settings(BaseSettings):
 
     @field_validator("database_url")
     @classmethod
-    def _ensure_sqlite_dir(cls, value: str) -> str:
-        """Create the parent directory for a local sqlite file if needed."""
+    def _normalize_database_url(cls, value: str) -> str:
+        """Create the parent directory for a local sqlite file if needed, and
+        normalise a bare Postgres URL to the psycopg3 driver.
+
+        Managed Postgres hosts (Render, Heroku-style ``postgres://``, Neon)
+        hand back a driver-less ``postgres://`` or ``postgresql://`` URL.
+        SQLAlchemy's default dialect for that scheme assumes ``psycopg2``,
+        which isn't installed — ``requirements.txt`` installs ``psycopg``
+        (psycopg3) instead — so left alone this only fails at runtime, in
+        production, after the app has otherwise built and deployed fine.
+        """
         prefix = "sqlite:///"
         if value.startswith(prefix):
             raw = value[len(prefix):]
@@ -103,6 +112,10 @@ class Settings(BaseSettings):
                 db_path = (BACKEND_ROOT / raw).resolve()
             db_path.parent.mkdir(parents=True, exist_ok=True)
             return f"{prefix}{db_path}"
+        if value.startswith("postgres://"):
+            value = "postgresql://" + value[len("postgres://"):]
+        if value.startswith("postgresql://"):
+            value = "postgresql+psycopg://" + value[len("postgresql://"):]
         return value
 
 
