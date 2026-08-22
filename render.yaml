@@ -55,4 +55,4 @@ services:
     startCommand: npm run start
     envVars:
       - key: BACKEND_ORIGIN
-        value: https://parcelpilot-backend.onrender.com
+        value: https://parcelpilot-backend-cbyp.onrender.com
