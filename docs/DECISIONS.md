@@ -50,16 +50,3 @@ tool base class.
   any lower layer.
 - Background indexing/Celery are designed-for but run inline locally.
 
-## Roadmap
-
-1. **Postgres + pgvector** deployment profile and Alembic migrations.
-2. **Streaming reasoning**: emit trace/tool events live during the agent run (currently sent in one
-   `meta` frame before prose).
-3. **LLM-assisted planning & severity** as an optional layer behind the deterministic default, with the
-   deterministic result as a guardrail.
-4. **Feedback loop**: thumbs-up/down on answers → evaluation dataset → retrieval + prompt tuning.
-5. **Cost & latency observability** dashboard (per-model token/cost tracking; the telemetry hooks exist).
-6. **Multi-turn memory & summarisation** for long conversations.
-7. **More actions**: order cancellation execution, service-credit issuance (with manager-approval
-   routing for amounts > ₹1,000, already detected).
-8. **Real-time SLA countdown timers** and breach webhooks/alerts.
